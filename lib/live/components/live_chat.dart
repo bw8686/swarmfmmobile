@@ -9,6 +9,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:swarmfmmobile/live/components/chat_utils.dart';
+import 'package:swarmfmmobile/live/components/emote_picker.dart';
 import 'package:swarmfmmobile/live/components/fpwebsockets.dart';
 import 'package:swarmfmmobile/features/emotes/seventv_emote.dart';
 import 'package:swarmfmmobile/live/controllers/live_chat_provider.dart';
@@ -359,13 +360,20 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                                       ),
                                     ),
                                     AnimatedContainer(
-                                      duration: Duration(milliseconds: 300),
-                                      height: showEmotePicker ? 90 : 0,
+                                      duration: const Duration(
+                                        milliseconds: 300,
+                                      ),
+                                      height: showEmotePicker ? 150 : 0,
                                       color: colorScheme.surfaceContainer,
-                                      child:
-                                          ref.watch(emotepickerProvider).isEmpty
-                                          ? CircularProgressIndicator()
-                                          : EmotePicker(controller: controller),
+                                      child: Consumer(
+                                        builder: (context, ref, child) {
+                                          return EmotePicker(
+                                            onEmoteSelected: (emote) {
+                                              controller.text += '$emote ';
+                                            },
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -400,6 +408,7 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                                         fpWebsockets.sendChatMessage(
                                           controller.text,
                                         );
+                                        controller.clear();
                                       },
                                     ),
                                   ],
@@ -595,118 +604,141 @@ class _LiveChatState extends ConsumerState<LiveChat> {
   }
 }
 
-class EmotePicker extends ConsumerWidget {
-  final TextEditingController controller;
+// class EmotePicker extends StatelessWidget {
+//   final TextEditingController controller;
+//   final Map<String, List<dynamic>> emoteMap;
 
-  const EmotePicker({super.key, required this.controller});
+//   const EmotePicker({
+//     super.key,
+//     required this.controller,
+//     required this.emoteMap,
+//   });
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final emoteMap = ref.watch(emotepickerProvider);
-    final emoteCategories = emoteMap.keys.toList();
+//   @override
+//   Widget build(BuildContext context) {
+//     final emoteCategories = emoteMap.keys.toList();
+//     if (emoteCategories.isEmpty) {
+//       return const Center(child: Text('No emotes found.'));
+//     }
 
-    if (emoteCategories.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
+//     return DefaultTabController(
+//       length: emoteCategories.length,
+//       child: Column(
+//         children: [
+//           TabBar(
+//             isScrollable: true,
+//             tabs: emoteCategories
+//                 .map((category) => Tab(text: category))
+//                 .toList(),
+//             labelColor: Theme.of(context).textTheme.bodyLarge?.color,
+//             indicatorColor: Theme.of(context).colorScheme.primary,
+//             unselectedLabelColor: Colors.grey,
+//           ),
+//           Expanded(
+//             child: TabBarView(
+//               children: emoteCategories.map((category) {
+//                 final emotes = emoteMap[category]!;
+//                 return _buildEmoteGrid(
+//                   emotes: emotes,
+//                   onEmoteTap: (emoteCode) {
+//                     final textToInsert = '$emoteCode ';
+//                     final currentText = controller.text;
+//                     final selection = controller.selection;
+//                     final cursorPosition = selection.baseOffset;
 
-    return DefaultTabController(
-      length: emoteCategories.length,
-      child: Column(
-        children: [
-          TabBar(
-            tabs: emoteCategories
-                .map((category) => Tab(text: category))
-                .toList(),
-            labelColor: Theme.of(context).textTheme.bodyLarge?.color,
-            indicatorColor: Theme.of(context).colorScheme.primary,
-            unselectedLabelColor: Colors.grey,
-          ),
-          Expanded(
-            child: TabBarView(
-              children: emoteCategories.map((category) {
-                final emotes = emoteMap[category]!;
-                return _buildEmoteGrid(
-                  emotes: emotes,
-                  onEmoteTap: (emoteCode) {
-                    controller.text += '$emoteCode ';
-                  },
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+//                     final safeCursorPosition = (cursorPosition == -1)
+//                         ? currentText.length
+//                         : cursorPosition;
 
-  Widget _buildEmoteGrid({
-    required List<dynamic> emotes,
-    required Function(String) onEmoteTap,
-  }) {
-    if (emotes.isEmpty) {
-      return const Center(
-        child: Text(
-          'No emotes available',
-          style: TextStyle(color: Colors.grey),
-        ),
-      );
-    }
+//                     final newText =
+//                         currentText.substring(0, safeCursorPosition) +
+//                         textToInsert +
+//                         currentText.substring(safeCursorPosition);
 
-    return GridView.builder(
-      padding: const EdgeInsets.all(8),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 40,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        childAspectRatio: 1,
-      ),
-      itemCount: emotes.length,
-      itemBuilder: (context, index) {
-        final dynamic emote = emotes[index];
-        String emoteCode;
-        String emoteUrl;
+//                     controller.text = newText;
+//                     controller.selection = TextSelection.fromPosition(
+//                       TextPosition(
+//                         offset: safeCursorPosition + textToInsert.length,
+//                       ),
+//                     );
+//                   },
+//                 );
+//               }).toList(),
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
 
-        if (emote is Emote) {
-          emoteCode = emote.name;
-          emoteUrl = emote.url;
-        } else if (emote is SevenTVEmote) {
-          emoteCode = emote.name;
-          emoteUrl = '${emote.url}/1x.webp';
-        } else {
-          return const SizedBox.shrink();
-        }
+//   Widget _buildEmoteGrid({
+//     required List<dynamic> emotes,
+//     required Function(String) onEmoteTap,
+//   }) {
+//     if (emotes.isEmpty) {
+//       return const Center(
+//         child: Text(
+//           'No emotes available',
+//           style: TextStyle(color: Colors.grey),
+//         ),
+//       );
+//     }
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => onEmoteTap(emoteCode),
-            child: Tooltip(
-              message: emoteCode,
-              child: Image.network(
-                emoteUrl,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Center(
-                  child: Text('?', style: const TextStyle(color: Colors.grey)),
-                ),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
+//     return GridView.builder(
+//       padding: const EdgeInsets.all(8),
+//       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+//         maxCrossAxisExtent: 40,
+//         crossAxisSpacing: 8,
+//         mainAxisSpacing: 8,
+//         childAspectRatio: 1,
+//       ),
+//       itemCount: emotes.length,
+//       itemBuilder: (context, index) {
+//         final dynamic emote = emotes[index];
+//         String emoteCode;
+//         String emoteUrl;
+
+//         if (emote is Emote) {
+//           emoteCode = emote.name;
+//           emoteUrl = emote.url;
+//         } else if (emote is SevenTVEmote) {
+//           emoteCode = emote.name;
+//           emoteUrl = '${emote.url}/1x.webp';
+//         } else {
+//           return const SizedBox.shrink();
+//         }
+
+//         return Material(
+//           color: Colors.transparent,
+//           child: InkWell(
+//             borderRadius: BorderRadius.circular(8),
+//             onTap: () => onEmoteTap(emoteCode),
+//             child: Tooltip(
+//               message: emoteCode,
+//               child: Image.network(
+//                 emoteUrl,
+//                 fit: BoxFit.contain,
+//                 errorBuilder: (context, error, stackTrace) => Center(
+//                   child: Text('?', style: const TextStyle(color: Colors.grey)),
+//                 ),
+//                 loadingBuilder: (context, child, loadingProgress) {
+//                   if (loadingProgress == null) return child;
+//                   return const Center(
+//                     child: SizedBox(
+//                       width: 20,
+//                       height: 20,
+//                       child: CircularProgressIndicator(strokeWidth: 2),
+//                     ),
+//                   );
+//                 },
+//               ),
+//             ),
+//           ),
+//         );
+//       },
+//     );
+//   }
+// }
 
 Widget chatterList(List<dynamic> chatterdata) {
   // Convert to Set to remove duplicates, then back to List

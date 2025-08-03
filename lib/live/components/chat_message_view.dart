@@ -6,13 +6,11 @@ import 'package:swarmfmmobile/live/models/chat_models.dart';
 
 class ChatMessageView extends ConsumerWidget {
   final ChatMessage message;
-
   const ChatMessageView({super.key, required this.message});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final emotesAsyncValue = ref.watch(sevenTVEmotesProvider);
-
     return emotesAsyncValue.when(
       data: (emotes) => _buildMessageWithEmotes(context, emotes),
       loading: () =>
@@ -29,27 +27,115 @@ class ChatMessageView extends ConsumerWidget {
     final emotes = {for (var e in emoteList) e.name: e};
     final List<InlineSpan> spans = [];
     final words = message.message.split(' ');
+    final List<InlineSpan> textSpans = [];
 
-    for (final word in words) {
-      if (emotes.containsKey(word)) {
-        final emote = emotes[word]!;
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2.0),
-              child: Image.network(
-                '${emote.url}/1x.webp', // Using webp format as a default
-                height: 24,
-                width: 24,
-              ),
+    for (int i = 0; i < words.length; i++) {
+      final word = words[i];
+      final emote = emotes[word];
+
+      if (emote != null && !emote.zeroWidth) {
+        // This is a base emote, check for subsequent zero-width emotes.
+        final List<SevenTVEmote> zeroWidthEmotes = [];
+        int j = i + 1;
+        while (j < words.length) {
+          final nextWord = words[j];
+          final nextEmote = emotes[nextWord];
+          if (nextEmote != null && nextEmote.zeroWidth) {
+            zeroWidthEmotes.add(nextEmote);
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        final allEmotes = [emote, ...zeroWidthEmotes];
+
+        // Calculate the maximum width needed for proper stacking
+        const double emoteHeight = 28.0;
+        final double maxWidth = allEmotes
+            .map((e) => (e.width / e.height) * emoteHeight)
+            .reduce((a, b) => a > b ? a : b);
+
+        final List<Widget> stackChildren = [];
+
+        // Add base emote first (bottom of stack)
+        stackChildren.add(
+          SizedBox(
+            width: maxWidth,
+            height: emoteHeight,
+            child: Image.network(
+              '${emote.url}/2x.webp',
+              height: emoteHeight,
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback to 1x version if 2x fails
+                return Image.network(
+                  '${emote.url}/1x.webp',
+                  height: emoteHeight,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Final fallback - show emote name as text
+                    return Container(
+                      width: maxWidth,
+                      height: emoteHeight,
+                      alignment: Alignment.center,
+                      child: Text(
+                        emote.name,
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  },
+                );
+              },
             ),
           ),
         );
+
+        // Add zero-width emotes on top
+        for (final zeroWidthEmote in zeroWidthEmotes) {
+          stackChildren.add(
+            SizedBox(
+              width: maxWidth,
+              height: emoteHeight,
+              child: Image.network(
+                '${zeroWidthEmote.url}/2x.webp',
+                height: emoteHeight,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback to 1x version if 2x fails
+                  return Image.network(
+                    '${zeroWidthEmote.url}/1x.webp',
+                    height: emoteHeight,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      // Final fallback - show emote name as text
+                      return SizedBox.shrink();
+                    },
+                  );
+                },
+              ),
+            ),
+          );
+        }
+
+        textSpans.add(
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Stack(alignment: Alignment.center, children: stackChildren),
+          ),
+        );
+
+        i = j - 1; // Move index past the consumed zero-width emotes
+      } else if (emote != null && emote.zeroWidth) {
+        // Standalone zero-width emote, render as text.
+        textSpans.add(TextSpan(text: '$word '));
       } else {
-        spans.add(TextSpan(text: '$word '));
+        // Regular word
+        textSpans.add(TextSpan(text: '$word '));
       }
     }
+
+    spans.addAll(textSpans);
 
     return RichText(
       text: TextSpan(
