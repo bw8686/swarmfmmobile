@@ -111,7 +111,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
     final ll = await settings.getBool(
       'll',
-      defaultValue: Platform.isIOS ? true : false,
+      defaultValue: false,
     );
 
     final dataSource = BetterPlayerDataSource(
@@ -125,6 +125,12 @@ class _MyHomePageState extends State<MyHomePage> {
         title: "SwarmFM",
         author: "Neuro, Evil, Vedal",
         imageUrl: "https://cdn.7tv.app/emote/01J3SHJ7H00000E62RNK51M8TK/4x.png",
+      ),
+      bufferingConfiguration: BetterPlayerBufferingConfiguration(
+        minBufferMs: 25000,
+        maxBufferMs: 6553600,
+        bufferForPlaybackMs: 12000,
+        bufferForPlaybackAfterRebufferMs: 10000,
       ),
     );
 
