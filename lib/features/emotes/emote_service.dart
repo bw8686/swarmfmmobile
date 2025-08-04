@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:dio/dio.dart';
 import 'package:swarmfmmobile/features/emotes/seventv_emote.dart';
 

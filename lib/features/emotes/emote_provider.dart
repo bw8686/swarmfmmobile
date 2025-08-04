@@ -4,7 +4,9 @@ import 'package:swarmfmmobile/features/emotes/seventv_emote.dart';
 
 final emoteServiceProvider = Provider((ref) => EmoteService());
 
-final emotepickerProvider = FutureProvider<Map<String, List<SevenTVEmote>>>((ref) async {
+final emotepickerProvider = FutureProvider<Map<String, List<SevenTVEmote>>>((
+  ref,
+) async {
   final emoteService = ref.watch(emoteServiceProvider);
 
   const emoteSets = {
@@ -24,7 +26,6 @@ final emotepickerProvider = FutureProvider<Map<String, List<SevenTVEmote>>>((ref
       final emotes = await emoteService.getSevenTVEmoteSet(emoteSetId);
       allEmotes[channelName] = emotes;
     } catch (e) {
-      print('Failed to load emotes for $channelName: $e');
       allEmotes[channelName] = []; // Add empty list on failure
     }
   }

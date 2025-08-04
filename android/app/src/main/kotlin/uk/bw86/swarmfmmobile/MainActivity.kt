@@ -1,4 +1,4 @@
-package com.example.swarmfmmobile
+package uk.bw86.swarmfmmobile
 
 import io.flutter.embedding.android.FlutterActivity
 

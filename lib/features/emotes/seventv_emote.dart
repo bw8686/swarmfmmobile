@@ -26,10 +26,6 @@ class SevenTVEmote {
     Map<String, dynamic> json,
     List<dynamic> files,
   ) {
-    final isZeroWidth = (json['data']['flags']) != 0;
-    print(
-      '[Debug Emote] Parsing emote: ${json['name']}, flags: ${json['data']['flags']}, isZeroWidth: $isZeroWidth',
-    );
     return SevenTVEmote(
       id: json['id'],
       name: json['name'],

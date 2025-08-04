@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:swarmfmmobile/settings.dart';
 import 'package:web_socket_client/web_socket_client.dart';
 import 'package:get_it/get_it.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -12,6 +13,8 @@ class FPWebsockets {
   String userAgent;
   PackageInfo? packageInfo;
   StreamSubscription? listen;
+  StreamSubscription? listen2;
+  bool authsent = false;
 
   @override
   FPWebsockets({required this.userAgent}) {
@@ -26,9 +29,19 @@ class FPWebsockets {
       listen!.cancel();
       listen = null;
     }
+    if (listen2 != null) {
+      listen2!.cancel();
+      listen2 = null;
+    }
     listen = io.messages.listen((message) {
-      print(message);
       messagesHandler(jsonDecode(message));
+    });
+    listen2 = io.connection.listen((state) async {
+      if (state.toString() == "Instance of 'Connected'") {
+        if (authsent) {
+          authorise(await settings.getKey('session'));
+        }
+      }
     });
   }
 
@@ -52,19 +65,38 @@ class FPWebsockets {
     stream.cancel();
   }
 
-  authorise(String session) async {
+  Future<String> authorise(String session) async {
     bool connected = false;
+    StreamSubscription? msgstream;
+    String name = '';
+    bool nameset = false;
     final stream = io.connection.listen((state) {
       if (state.toString() == "Instance of 'Connected'") {
         connected = true;
+        msgstream = io.messages.listen((message) {
+          final decoded = jsonDecode(message);
+          if (decoded['type'] == 'user_join') {
+            msgstream!.cancel();
+            name = decoded['name'];
+            nameset = true;
+          }
+        });
         final body = jsonEncode({"type": "authenticate", "session": session});
         io.send(body);
+        authsent = true;
       }
     });
     while (!connected) {
       await Future.delayed(const Duration(seconds: 1));
     }
+    int namesetattempts = 0;
+    while (!nameset && namesetattempts < 10) {
+      await Future.delayed(const Duration(seconds: 1));
+      namesetattempts++;
+    }
     stream.cancel();
+    msgstream!.cancel();
+    return name;
   }
 
   Future<List<dynamic>> getChatUserList() async {

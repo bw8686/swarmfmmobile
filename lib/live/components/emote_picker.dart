@@ -16,7 +16,7 @@ class EmotePicker extends ConsumerWidget {
       data: (emotes) {
         // The provider returns a List<SevenTVEmote>, not a Map.
         final List<SevenTVEmote> emoteList = emotes;
-        return Container(
+        return SizedBox(
           height: 100,
           child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(

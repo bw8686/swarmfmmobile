@@ -29,6 +29,8 @@ class ChatMessageView extends ConsumerWidget {
     final words = message.message.split(' ');
     final List<InlineSpan> textSpans = [];
 
+    final bool mention = message.message.split(' ').contains(message.name);
+
     for (int i = 0; i < words.length; i++) {
       final word = words[i];
       final emote = emotes[word];
@@ -74,16 +76,7 @@ class ChatMessageView extends ConsumerWidget {
                   height: emoteHeight,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
-                    // Final fallback - show emote name as text
-                    return Container(
-                      width: maxWidth,
-                      height: emoteHeight,
-                      alignment: Alignment.center,
-                      child: Text(
-                        emote.name,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    );
+                    return SizedBox.shrink();
                   },
                 );
               },
@@ -128,30 +121,59 @@ class ChatMessageView extends ConsumerWidget {
         i = j - 1; // Move index past the consumed zero-width emotes
       } else if (emote != null && emote.zeroWidth) {
         // Standalone zero-width emote, render as text.
-        textSpans.add(TextSpan(text: '$word '));
+        textSpans.add(
+          TextSpan(
+            text: '$word ',
+            style: message.isStruckThrough
+                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                : null,
+          ),
+        );
       } else {
         // Regular word
-        textSpans.add(TextSpan(text: '$word '));
+        textSpans.add(
+          TextSpan(
+            text: '$word ',
+            style: message.isStruckThrough
+                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                : null,
+          ),
+        );
       }
     }
 
     spans.addAll(textSpans);
 
-    return RichText(
+    final richText = RichText(
       text: TextSpan(
         style: DefaultTextStyle.of(context).style,
         children: [
           TextSpan(
-            text: '${message.name}: ',
+            text: message.name == null ? '' : '${message.name}: ',
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: _parseColor(message.nameColor),
             ),
           ),
-          ...spans,
+          TextSpan(
+            style: message.isStruckThrough
+                ? const TextStyle(decoration: TextDecoration.lineThrough)
+                : null,
+            children: spans,
+          ),
         ],
       ),
     );
+
+    if (mention) {
+      return Container(
+        color: Colors.yellow.withValues(alpha: 0.2),
+        padding: const EdgeInsets.symmetric(vertical: 2.0, horizontal: 4.0),
+        child: richText,
+      );
+    } else {
+      return richText;
+    }
   }
 
   Color _parseColor(String colorHex) {

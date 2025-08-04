@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
+            VALUE "CompanyName", "uk.bw86" "\0"
             VALUE "FileDescription", "swarmfmmobile" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "swarmfmmobile" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 uk.bw86. All rights reserved." "\0"
             VALUE "OriginalFilename", "swarmfmmobile.exe" "\0"
             VALUE "ProductName", "swarmfmmobile" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

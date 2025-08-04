@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:swarmfmmobile/features/emotes/emote_provider.dart';
 
 import 'package:swarmfmmobile/live/models/chat_models.dart';
+import 'package:swarmfmmobile/settings.dart';
 
 final webSocketEventHandlerProvider = Provider<WebSocketEventHandler>((ref) {
   return WebSocketEventHandler(ref);
@@ -68,6 +69,20 @@ class ChatManager extends StateNotifier<List<ChatMessage>> {
         : newState;
   }
 
+  void removeMessage(int id) {
+    state = state.where((message) => message.id != id).toList();
+  }
+
+  void strikeMessage(int id) {
+    state = [
+      for (final message in state)
+        if (message.id == id)
+          message.copyWith(isStruckThrough: true)
+        else
+          message,
+    ];
+  }
+
   void reset() async {
     state = [];
   }
@@ -81,6 +96,27 @@ class ChatManager extends StateNotifier<List<ChatMessage>> {
     if (message.isNotEmpty) {
       fpWebsockets.sendChatMessage(message);
     }
+  }
+}
+
+class Timeout {
+  final DateTime timeoutTime;
+
+  Timeout({required this.timeoutTime});
+}
+
+final timeoutProvider = StateNotifierProvider<TimeoutManager, Timeout>((ref) {
+  return TimeoutManager(ref);
+});
+
+final banProvider = StateProvider<bool>((ref) => false);
+
+class TimeoutManager extends StateNotifier<Timeout> {
+  TimeoutManager(this.ref) : super(Timeout(timeoutTime: DateTime.now()));
+  final dynamic ref;
+
+  void timeout(DateTime timeoutTime) {
+    state = Timeout(timeoutTime: timeoutTime);
   }
 }
 
@@ -149,6 +185,7 @@ class WebSocketEventHandler {
   final Ref ref;
   WebSocketEventHandler(this.ref);
   TextEditingController? controller;
+  String? name;
   BuildContext? context;
 
   void sendMessage(
@@ -170,38 +207,81 @@ class WebSocketEventHandler {
   }
 
   void messagesHandler(Map<String, dynamic> data) async {
-    try {
-      if (data['type'] == 'new_message') {
-        final msg = data['message'];
+    if (data['type'] == 'new_message') {
+      final msg = data['message'];
+      final message = ChatMessage(
+        name: msg['name'],
+        nameColor: msg['name_color'],
+        message: msg['message'],
+        id: msg['id'],
+      );
+      ref.read(chatProvider.notifier).addMessage(message);
+    } else if (data['type'] == 'message_history') {
+      final msgs = data['messages'];
+      for (final msg in msgs) {
         final message = ChatMessage(
           name: msg['name'],
           nameColor: msg['name_color'],
           message: msg['message'],
+          id: msg['id'],
         );
         ref.read(chatProvider.notifier).addMessage(message);
-      } else if (data['type'] == 'message_history') {
-        final msgs = data['messages'];
-        for (final msg in msgs) {
-          final message = ChatMessage(
-            name: msg['name'],
-            nameColor: msg['name_color'],
-            message: msg['message'],
-          );
-          ref.read(chatProvider.notifier).addMessage(message);
-        }
-      } else if (data['type'] == 'user_timed_out') {
-        ref.read(emotepickerProvider.notifier).updateEmotes(data['data']);
-      } else if (data['type'] == 'user_banned') {
-        ref.read(emotepickerProvider.notifier).updateEmotes(data['data']);
-      } else if (data['type'] == 'message_deleted') {
-        ref.read(emotepickerProvider.notifier).updateEmotes(data['data']);
-      } else if (data['type'] == 'user_leave') {
-        ref.read(emotepickerProvider.notifier).updateEmotes(data['data']);
-      } else if (data['type'] == 'user_joined') {
-        ref.read(emotepickerProvider.notifier).updateEmotes(data['data']);
       }
-    } catch (e) {
-      print('Error in messagesHandler: $e');
+    } else if (data['type'] == 'user_timed_out') {
+      if (await settings.getBool('adminview') == true) {
+        final message = ChatMessage(
+          nameColor: '',
+          message:
+              '${data['name']} has been timed out for ${data['duration']} seconds',
+          id: 0000,
+        );
+        ref.read(chatProvider.notifier).addMessage(message);
+      }
+      if (data['name'] == name) {
+        final timeoutTime = DateTime.now().add(
+          Duration(seconds: data['duration']),
+        );
+        await settings.setKey('timeout_until', timeoutTime.toIso8601String());
+        ref.read(timeoutProvider.notifier).timeout(timeoutTime);
+      }
+    } else if (data['type'] == 'user_banned') {
+      if (await settings.getBool('adminview') == true) {
+        final message = ChatMessage(
+          id: DateTime.now().millisecondsSinceEpoch,
+          message: '${data['name']} was banned by ${data['banner']}',
+          name: 'Admin',
+          nameColor: '808080',
+        );
+        ref.read(chatProvider.notifier).addMessage(message);
+      }
+      if (data['name'] == name) {
+        await settings.setBool('banned', true);
+        ref.read(banProvider.notifier).state = true;
+      }
+    } else if (data['type'] == 'message_deleted') {
+      if (await settings.getBool('adminview') == true) {
+        ref.read(chatProvider.notifier).strikeMessage(data['id']);
+      } else {
+        ref.read(chatProvider.notifier).removeMessage(data['id']);
+      }
+    } else if (data['type'] == 'user_leave') {
+      if (await settings.getBool('adminview') == true) {
+        final message = ChatMessage(
+          nameColor: '',
+          message: '${data['name']} has left the chat',
+          id: 0000,
+        );
+        ref.read(chatProvider.notifier).addMessage(message);
+      }
+    } else if (data['type'] == 'user_join') {
+      if (await settings.getBool('adminview') == true) {
+        final message = ChatMessage(
+          nameColor: '',
+          message: '${data['name']} has joined the chat',
+          id: 0000,
+        );
+        ref.read(chatProvider.notifier).addMessage(message);
+      }
     }
   }
 

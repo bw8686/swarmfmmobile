@@ -1,6 +1,7 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:async';
+import 'package:swarmfmmobile/settings.dart';
 import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
@@ -11,10 +12,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:swarmfmmobile/live/components/chat_utils.dart';
 import 'package:swarmfmmobile/live/components/emote_picker.dart';
 import 'package:swarmfmmobile/live/components/fpwebsockets.dart';
-import 'package:swarmfmmobile/features/emotes/seventv_emote.dart';
 import 'package:swarmfmmobile/live/controllers/live_chat_provider.dart';
 import 'package:swarmfmmobile/live/components/chat_message_view.dart';
-import 'package:swarmfmmobile/settings.dart';
 import 'package:uuid/uuid.dart';
 
 class LiveChat extends ConsumerStatefulWidget {
@@ -35,6 +34,12 @@ class _LiveChatState extends ConsumerState<LiveChat> {
   int longpress = 0;
   bool authed = false;
   bool loading = true;
+  String name = '';
+  bool banned = false;
+  bool timedout = false;
+  int timeoutTime = 0;
+  Timer? _timeoutTimer;
+
   final CookieManager _cookieManager = CookieManager.instance();
 
   @override
@@ -51,7 +56,27 @@ class _LiveChatState extends ConsumerState<LiveChat> {
     });
   }
 
+  Future<void> _loadInitialStatus() async {
+    final isBanned = await settings.getBool('banned');
+    if (isBanned && mounted) {
+      setState(() {
+        banned = true;
+      });
+    }
+
+    final timeoutString = await settings.getKey('timeout_until');
+    if (timeoutString.isNotEmpty) {
+      final timeoutUntil = DateTime.tryParse(timeoutString);
+      if (timeoutUntil != null && timeoutUntil.isAfter(DateTime.now())) {
+        if (mounted) {
+          ref.read(timeoutProvider.notifier).timeout(timeoutUntil);
+        }
+      }
+    }
+  }
+
   Future<void> _init() async {
+    await _loadInitialStatus();
     ref.read(webSocketEventHandlerProvider).controller = controller;
     ref.read(webSocketEventHandlerProvider).context = context;
     await fpWebsockets.registerListener(
@@ -72,8 +97,9 @@ class _LiveChatState extends ConsumerState<LiveChat> {
     final session = await settings.getKey('session');
     final authedcheck = session.isNotEmpty;
     if (authedcheck) {
-      fpWebsockets.authorise(session);
+      name = await fpWebsockets.authorise(session);
     }
+    ref.read(webSocketEventHandlerProvider).name = name;
     setState(() {
       authed = authedcheck;
       loading = false;
@@ -88,6 +114,7 @@ class _LiveChatState extends ConsumerState<LiveChat> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _timeoutTimer?.cancel();
     super.dispose();
   }
 
@@ -97,6 +124,82 @@ class _LiveChatState extends ConsumerState<LiveChat> {
     final colorScheme = theme.colorScheme;
     final messages = ref.watch(chatProvider);
     final errorState = ref.watch(errorProvider);
+
+    ref.listen<bool>(banProvider, (previous, next) {
+      if (next == true) {
+        if (mounted) {
+          setState(() {
+            banned = true;
+          });
+        }
+      }
+    });
+
+    ref.listen<Timeout>(timeoutProvider, (previous, next) {
+      final now = DateTime.now();
+      if (next.timeoutTime.isAfter(now)) {
+        if (mounted) {
+          setState(() {
+            timedout = true;
+            timeoutTime = next.timeoutTime.difference(now).inSeconds;
+          });
+          _timeoutTimer?.cancel();
+          _timeoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (mounted) {
+              setState(() {
+                if (timeoutTime > 0) {
+                  timeoutTime--;
+                } else {
+                  timedout = false;
+                  settings.removeKey('timeout_until');
+                  timer.cancel();
+                }
+              });
+            } else {
+              timer.cancel();
+            }
+          });
+        }
+      }
+    });
+
+    ref.listen<bool>(banProvider, (previous, next) {
+      if (next == true) {
+        if (mounted) {
+          setState(() {
+            banned = true;
+          });
+        }
+      }
+    });
+
+    ref.listen<Timeout>(timeoutProvider, (previous, next) {
+      final now = DateTime.now();
+      if (next.timeoutTime.isAfter(now)) {
+        if (mounted) {
+          setState(() {
+            timedout = true;
+            timeoutTime = next.timeoutTime.difference(now).inSeconds;
+          });
+          _timeoutTimer?.cancel();
+          _timeoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (mounted) {
+              setState(() {
+                if (timeoutTime > 0) {
+                  timeoutTime--;
+                } else {
+                  timedout = false;
+                  settings.removeKey('timeout_until');
+                  timer.cancel();
+                }
+              });
+            } else {
+              timer.cancel();
+            }
+          });
+        }
+      }
+    });
     ref.listen(chatProvider, (previous, next) {
       if (_scrollController.hasClients) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -381,36 +484,50 @@ class _LiveChatState extends ConsumerState<LiveChat> {
                                 Row(
                                   children: [
                                     Flexible(
-                                      child: TextField(
-                                        maxLength: 500,
-                                        maxLengthEnforcement:
-                                            MaxLengthEnforcement.enforced,
-                                        minLines: 1,
-                                        maxLines: 2,
-                                        controller: controller,
-                                        onSubmitted: (String value) {
+                                      child: banned
+                                          ? Center(
+                                              child: Text('You are banned'),
+                                            )
+                                          : timedout
+                                          ? Center(
+                                              child: Text(
+                                                'You are timed out for $timeoutTime seconds',
+                                              ),
+                                            )
+                                          : TextField(
+                                              maxLength: 500,
+                                              maxLengthEnforcement:
+                                                  MaxLengthEnforcement.enforced,
+                                              minLines: 1,
+                                              maxLines: 2,
+                                              controller: controller,
+                                              onSubmitted: (String value) {
+                                                fpWebsockets.sendChatMessage(
+                                                  controller.text,
+                                                );
+                                                controller.clear();
+                                              },
+                                              decoration: InputDecoration(
+                                                contentPadding: EdgeInsets.all(
+                                                  4,
+                                                ),
+                                                border: InputBorder.none,
+                                                counterText:
+                                                    '', // i love flutter
+                                                hintText: "Enter your message",
+                                              ),
+                                            ),
+                                    ),
+                                    if (!banned && !timedout)
+                                      IconButton(
+                                        icon: Icon(Icons.send),
+                                        onPressed: () {
                                           fpWebsockets.sendChatMessage(
                                             controller.text,
                                           );
                                           controller.clear();
                                         },
-                                        decoration: InputDecoration(
-                                          contentPadding: EdgeInsets.all(4),
-                                          border: InputBorder.none,
-                                          counterText: '', // i love flutter
-                                          hintText: "Enter your message",
-                                        ),
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.send),
-                                      onPressed: () {
-                                        fpWebsockets.sendChatMessage(
-                                          controller.text,
-                                        );
-                                        controller.clear();
-                                      },
-                                    ),
                                   ],
                                 ),
                               if (!authed)
@@ -604,142 +721,6 @@ class _LiveChatState extends ConsumerState<LiveChat> {
   }
 }
 
-// class EmotePicker extends StatelessWidget {
-//   final TextEditingController controller;
-//   final Map<String, List<dynamic>> emoteMap;
-
-//   const EmotePicker({
-//     super.key,
-//     required this.controller,
-//     required this.emoteMap,
-//   });
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final emoteCategories = emoteMap.keys.toList();
-//     if (emoteCategories.isEmpty) {
-//       return const Center(child: Text('No emotes found.'));
-//     }
-
-//     return DefaultTabController(
-//       length: emoteCategories.length,
-//       child: Column(
-//         children: [
-//           TabBar(
-//             isScrollable: true,
-//             tabs: emoteCategories
-//                 .map((category) => Tab(text: category))
-//                 .toList(),
-//             labelColor: Theme.of(context).textTheme.bodyLarge?.color,
-//             indicatorColor: Theme.of(context).colorScheme.primary,
-//             unselectedLabelColor: Colors.grey,
-//           ),
-//           Expanded(
-//             child: TabBarView(
-//               children: emoteCategories.map((category) {
-//                 final emotes = emoteMap[category]!;
-//                 return _buildEmoteGrid(
-//                   emotes: emotes,
-//                   onEmoteTap: (emoteCode) {
-//                     final textToInsert = '$emoteCode ';
-//                     final currentText = controller.text;
-//                     final selection = controller.selection;
-//                     final cursorPosition = selection.baseOffset;
-
-//                     final safeCursorPosition = (cursorPosition == -1)
-//                         ? currentText.length
-//                         : cursorPosition;
-
-//                     final newText =
-//                         currentText.substring(0, safeCursorPosition) +
-//                         textToInsert +
-//                         currentText.substring(safeCursorPosition);
-
-//                     controller.text = newText;
-//                     controller.selection = TextSelection.fromPosition(
-//                       TextPosition(
-//                         offset: safeCursorPosition + textToInsert.length,
-//                       ),
-//                     );
-//                   },
-//                 );
-//               }).toList(),
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-
-//   Widget _buildEmoteGrid({
-//     required List<dynamic> emotes,
-//     required Function(String) onEmoteTap,
-//   }) {
-//     if (emotes.isEmpty) {
-//       return const Center(
-//         child: Text(
-//           'No emotes available',
-//           style: TextStyle(color: Colors.grey),
-//         ),
-//       );
-//     }
-
-//     return GridView.builder(
-//       padding: const EdgeInsets.all(8),
-//       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-//         maxCrossAxisExtent: 40,
-//         crossAxisSpacing: 8,
-//         mainAxisSpacing: 8,
-//         childAspectRatio: 1,
-//       ),
-//       itemCount: emotes.length,
-//       itemBuilder: (context, index) {
-//         final dynamic emote = emotes[index];
-//         String emoteCode;
-//         String emoteUrl;
-
-//         if (emote is Emote) {
-//           emoteCode = emote.name;
-//           emoteUrl = emote.url;
-//         } else if (emote is SevenTVEmote) {
-//           emoteCode = emote.name;
-//           emoteUrl = '${emote.url}/1x.webp';
-//         } else {
-//           return const SizedBox.shrink();
-//         }
-
-//         return Material(
-//           color: Colors.transparent,
-//           child: InkWell(
-//             borderRadius: BorderRadius.circular(8),
-//             onTap: () => onEmoteTap(emoteCode),
-//             child: Tooltip(
-//               message: emoteCode,
-//               child: Image.network(
-//                 emoteUrl,
-//                 fit: BoxFit.contain,
-//                 errorBuilder: (context, error, stackTrace) => Center(
-//                   child: Text('?', style: const TextStyle(color: Colors.grey)),
-//                 ),
-//                 loadingBuilder: (context, child, loadingProgress) {
-//                   if (loadingProgress == null) return child;
-//                   return const Center(
-//                     child: SizedBox(
-//                       width: 20,
-//                       height: 20,
-//                       child: CircularProgressIndicator(strokeWidth: 2),
-//                     ),
-//                   );
-//                 },
-//               ),
-//             ),
-//           ),
-//         );
-//       },
-//     );
-//   }
-// }
-
 Widget chatterList(List<dynamic> chatterdata) {
   // Convert to Set to remove duplicates, then back to List
   final uniqueChatters = chatterdata.toSet().toList();
@@ -805,7 +786,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool showUsernameColors = true; // Default true
   bool playSoundWhenMentioned = false; // Default false
   bool highlightMentions = true; // Default true
-  bool revealPollResultsBeforeVoting = false; // Default false
+  bool adminview = false; // Default false
   bool timestampMessages = false; // Default false
   bool ll = false; // Default false
   bool _isPlayerInitialized = false;
@@ -834,8 +815,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       'highlight_mentions',
       defaultValue: true,
     );
-    final bool pollResults = await settings.getBool(
-      'reveal_poll_results',
+    final bool adminView = await settings.getBool(
+      'adminview',
       defaultValue: false,
     );
     final bool timestampOnMessages = await settings.getBool(
@@ -858,7 +839,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         showUsernameColors = usernamecolors;
         playSoundWhenMentioned = soundMentions;
         highlightMentions = lightMentions;
-        revealPollResultsBeforeVoting = pollResults;
+        adminview = adminView;
         timestampMessages = timestampOnMessages;
         ll = llresult;
         secretSettings = secretSettingsEnabled;
@@ -889,21 +870,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 16.0),
-                child: Text('Chat Settings', style: textTheme.titleMedium),
-              ),
-              SizedBox(height: 5),
-              SwitchListTile(
-                value: showUsernameColors,
-                onChanged: (value) {
-                  setState(() {
-                    showUsernameColors = value;
-                  });
-                  settings.setBool('show_username_colors', value);
-                },
-                title: Text('Show username colors'),
-              ),
               SwitchListTile(
                 value: playSoundWhenMentioned,
                 onChanged: (value) async {
@@ -997,31 +963,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ),
-              SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.only(left: 16.0),
-                child: Text('Chat Preview', style: textTheme.titleMedium),
-              ),
-              SizedBox(height: 5),
-              Divider(indent: 2, endIndent: 2, height: 2),
-              FutureBuilder(
-                future: _buildChatPreview(context),
-                builder: (context, snapshot) {
-                  return snapshot.data ?? const SizedBox.shrink();
-                },
-              ),
-              Divider(indent: 2, endIndent: 2, height: 2),
               if (secretSettings) SizedBox(height: 16),
               if (secretSettings)
                 SwitchListTile(
-                  value: revealPollResultsBeforeVoting,
+                  value: adminview,
                   onChanged: (value) {
                     setState(() {
-                      revealPollResultsBeforeVoting = value;
+                      adminview = value;
                     });
-                    settings.setBool('reveal_poll_results', value);
+                    settings.setBool('adminview', value);
                   },
-                  title: Text('Reveal poll results before voting'),
+                  title: Text('Admin View'),
                 ),
             ],
           );
@@ -1029,159 +981,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
-
-Future<Widget> _buildChatPreview(BuildContext context) async {
-  Color namecolor =
-      await settings.getBool('show_username_colors', defaultValue: true)
-      ? getColorForUsernameColor('user')
-      : Theme.of(context).colorScheme.primary;
-  String pingText = '@user';
-  Color pingcolor =
-      await settings.getBool('show_username_colors', defaultValue: true)
-      ? getColorForUsernameColor('user')
-      : Theme.of(context).colorScheme.primary;
-  bool highlightMentions = await settings.getBool(
-    'highlight_mentions',
-    defaultValue: true,
-  );
-  int messageSize = await settings.getDynamic(
-    'chat_message_size',
-    defaultValue: 1,
-  );
-  double fontSize = messageSize == 0
-      ? 10
-      : messageSize == 1
-      ? 14
-      : 18;
-  double emoteSize = messageSize == 0
-      ? 14
-      : messageSize == 1
-      ? 20
-      : 26;
-  double pingSize = messageSize == 0
-      ? 10
-      : messageSize == 1
-      ? 14
-      : 18;
-  bool showTimestamps = await settings.getBool(
-    'timestamp_messages',
-    defaultValue: false,
-  );
-  DateTime sentAt = DateTime.now();
-  final List<InlineSpan> spans = [];
-
-  if (showTimestamps) {
-    final localTime = sentAt.toLocal();
-    spans.add(
-      TextSpan(
-        text:
-            '${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')} ',
-        style: TextStyle(
-          fontSize: fontSize,
-          color: Theme.of(context).colorScheme.tertiary,
-        ),
-      ),
-    );
-  }
-
-  // Username button
-  spans.add(
-    WidgetSpan(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-        child: TextButton(
-          onPressed: () {},
-          style: ButtonStyle(
-            padding: WidgetStateProperty.all(
-              const EdgeInsets.only(left: 4, right: 4),
-            ),
-            minimumSize: WidgetStateProperty.all(Size.zero),
-            backgroundColor: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.hovered)) {
-                return namecolor.withValues(alpha: 0.25);
-              }
-              return Colors.transparent;
-            }),
-            shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-            ),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-          child: Text(
-            'user',
-            style: TextStyle(
-              color: namecolor,
-              fontWeight: FontWeight.bold,
-              fontSize: fontSize,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-
-  // Message text
-  spans.add(
-    TextSpan(
-      text: 'hello ',
-      style: TextStyle(fontSize: fontSize),
-    ),
-  );
-
-  // Mention button
-  spans.add(
-    WidgetSpan(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-        child: TextButton(
-          onPressed: () {},
-          style: ButtonStyle(
-            padding: WidgetStateProperty.all(
-              const EdgeInsets.only(left: 4, right: 4),
-            ),
-            minimumSize: WidgetStateProperty.all(Size.zero),
-            backgroundColor: WidgetStateProperty.resolveWith((states) {
-              if (states.contains(WidgetState.hovered)) {
-                return pingcolor.withValues(alpha: 0.25);
-              }
-              return highlightMentions && pingText.substring(1) == 'user'
-                  ? Theme.of(context).colorScheme.primary
-                  : Colors.transparent;
-            }),
-            shape: WidgetStateProperty.all(
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-            ),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-          ),
-          child: Text(
-            pingText,
-            style: TextStyle(
-              color: highlightMentions && pingText.substring(1) == 'user'
-                  ? Colors.white
-                  : pingcolor,
-              fontWeight: FontWeight.bold,
-              fontSize: pingSize,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-
-  // Emote
-  spans.add(
-    WidgetSpan(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4.0),
-        child: Image.asset(
-          'assets/livechat/sample.png',
-          fit: BoxFit.cover,
-          height: emoteSize,
-        ),
-      ),
-    ),
-  );
-
-  return Text.rich(TextSpan(children: spans));
 }

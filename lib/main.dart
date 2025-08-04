@@ -21,11 +21,7 @@ void main() async {
 
   getIt.registerSingleton<FPWebsockets>(FPWebsockets(userAgent: userAgent));
 
-  runApp(
-    ProviderScope(
-      child: MyApp(),
-    ),
-  );
+  runApp(ProviderScope(child: MyApp()));
 }
 
 class MyApp extends StatelessWidget {
@@ -124,6 +120,12 @@ class _MyHomePageState extends State<MyHomePage> {
       liveStream: true,
       videoFormat: BetterPlayerVideoFormat.hls,
       videoExtension: 'm3u8',
+      notificationConfiguration: BetterPlayerNotificationConfiguration(
+        showNotification: true,
+        title: "SwarmFM",
+        author: "Neuro, Evil, Vedal",
+        imageUrl: "https://cdn.7tv.app/emote/01J3SHJ7H00000E62RNK51M8TK/4x.png",
+      ),
     );
 
     _betterPlayerController = BetterPlayerController(
