@@ -27,16 +27,12 @@ jobs:
       - name: Build unsigned APK
         run: flutter build apk --release
 
-      - name: Build unsigned AAB
-        run: flutter build appbundle --release
-
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android
           path: |
             build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/bundle/release/app-release.aab
 
   build-ios:
     runs-on: macos-latest
@@ -92,6 +88,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/android/*.apk
-            artifacts/android/*.aab
+            artifacts/flutter-apk/*.apk
             artifacts/ios/unsigned.ipa
