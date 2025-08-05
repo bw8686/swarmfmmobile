@@ -1,5 +1,4 @@
 name: Build and Release Flutter App (Unsigned)
-
 on:
   push:
     tags:
@@ -11,57 +10,49 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.29.3"
           cache: true
-
+      
       - name: Install Flutter dependencies
         run: flutter pub get
-
-      - name: Install dependencies
-        run: flutter pub get
-
+      
       - name: Build unsigned APK
         run: flutter build apk --release
-
+      
       - name: Upload Android Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
 
   build-ios:
     runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
+      
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: "3.29.3"
           cache: true
-
+      
       - name: Install Flutter dependencies
         run: flutter pub get
-
-      - name: Install dependencies
-        run: flutter pub get
-
+      
       - name: Build iOS app (unsigned)
         run: flutter build ios --release --no-codesign
-
+      
       - name: Package .ipa manually
         run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
           zip -r unsigned.ipa Payload
-        working-directory: .
-
+      
       - name: Upload iOS Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,16 +68,24 @@ jobs:
         with:
           name: android
           path: artifacts/android
-
+      
       - name: Download iOS artifacts
         uses: actions/download-artifact@v4
         with:
           name: ios
           path: artifacts/ios
-
+      
+      - name: Debug - List downloaded files
+        run: |
+          echo "Contents of artifacts directory:"
+          find artifacts -type f -ls
+          echo "Current directory:"
+          pwd
+          ls -la
+      
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/flutter-apk/*.apk
+            artifacts/android/app-release.apk
             artifacts/ios/unsigned.ipa
